@@ -129,7 +129,7 @@ def offset_graph(polygon,
         {node key : shapely.geometry.Polygon}
     """
 
-    # make sure distance is negative
+       # make sure distance is negative
     distance = -np.abs(distance)
     # generate the graph of offset polygons
     g = nx.DiGraph()
@@ -140,25 +140,27 @@ def offset_graph(polygon,
 
     while len(queue) > 0:
         current = queue.pop()
-        # use polygon hashes as node names
         current_index = hash(current)
-
-        # store the current polygon
         offsets[current_index] = current
-
-        # offset polygon inwards
+        g.add_node(current_index, polygon=current)  
         buffered = current.buffer(distance)
-        for child in trimesh.util.make_sequence(buffered):
-            if child.area < min_area:
-                continue
-            # replace the childs buffered interior with the
-            # interior from the original polygon
-            child = Polygon(shell=child.exterior.coords,
-                            holes=[i.coords
-                                   for i in polygon.interiors])
-            g.add_edge(hash(current),
-                       hash(child))
-            queue.append(child)
+
+        # If buffered is a MultiPolygon, process each part
+        if isinstance(buffered, MultiPolygon):
+            for part in buffered.geoms:
+                if part.area >= min_area:
+                    part = Polygon(shell=part.exterior.coords, holes=[i.coords for i in current.interiors])
+                    part_index = hash(part)
+                    g.add_edge(current_index, part_index)
+                    g.add_node(part_index, polygon=part)  
+                    queue.append(part)
+        elif isinstance(buffered, Polygon):
+            if buffered.area >= min_area:
+                buffered = Polygon(shell=buffered.exterior.coords, holes=[i.coords for i in current.interiors])
+                buffered_index = hash(buffered)
+                g.add_edge(current_index, buffered_index)
+                g.add_node(buffered_index, polygon=buffered)  
+                queue.append(buffered)
 
     return g, offsets
 
